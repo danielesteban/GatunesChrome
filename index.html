@@ -1,0 +1,19 @@
+<!doctype html>
+<html data-ng-app="Gatunes" data-ng-csp>
+	<head>
+		<meta charset="utf-8">
+		<link href="css/screen.less" rel="stylesheet/less">
+		<script src="js/lib.js"></script>
+		<script src="js/less.js"></script>
+		<script src="js/app.js"></script>
+		<script src="js/controllers.js"></script>
+		<script src="js/directives.js"></script>
+		<script src="js/filters.js"></script>
+		<script src="js/services.js"></script>
+		<title>Gatunes</title>
+	</head>
+	<body data-ng-class="{player: playing}">
+		<div data-ng-view></div>
+		<player data-ng-controller="player" data-ng-include="'partials/player.html'"></player>
+	</body>
+</html>

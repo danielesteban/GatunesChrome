@@ -1,0 +1,25 @@
+<header>
+	<a data-ng-click="menu()" class="menu"><i class="fa fa-th-large"></i></a>
+	<a data-ng-click="back()" class="back"><i class="fa fa-arrow-circle-left"></i></a>
+	<h1>{{playlist.title}}</h1>
+</header>
+<spinner data-ng-if="!playlist.tracks.length"></spinner>
+<table data-ng-show="playlist.tracks.length" class="playlist">
+	<tbody>
+		<tr data-ng-click="play($index)" data-ng-class="{playing: playing.video.id === track.video.id}" data-ng-class-odd="'odd'" data-ng-repeat="track in playlist.tracks">
+			<td>
+				<img data-ng-src="{{track.image[2]['#text']}}">
+				<i></i>
+			</td>
+			<td>
+				<span>{{$index + 1 | addZero}}</span>
+				<i class="fa fa-volume-up"></i>
+			</td>
+			<td>
+				<h5>{{track.name}}</h5>
+				<small>{{track.artist.name}}</small>
+			</td>
+			<td>{{track.video.duration | time}}</td>
+		</tr>		
+	</tbody>
+</table>

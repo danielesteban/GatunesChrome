@@ -1,0 +1,13 @@
+<header>
+	<h1><i class="fa fa-th-large"></i>Radios</h1>
+</header>
+<spinner data-ng-if="loading"></spinner>
+<nav data-ng-if="!loading" class="tags">
+	<li data-ng-repeat="tag in tags">
+		<a data-ng-href="#/tag/{{tag.name}}">
+			<img data-ng-src="{{tag.image}}">
+			<i></i>
+			<span>{{tag.name | tag}}</span>
+		</a>
+	</li>
+</nav>

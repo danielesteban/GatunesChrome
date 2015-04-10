@@ -1,0 +1,22 @@
+{
+	"background": {
+		"persistent": false,
+		"page": "api.html"
+	},
+	"browser_action": {
+		"default_title": "Gatunes",
+		"default_popup": "index.html"
+	},
+	"description": "Descubre música en Youtube",
+	"icons": {
+		"128": "img/icon.png"
+	},
+	"name": "Gatunes",
+	"permissions": [
+		"tabs",
+		"*://*.youtube.com/",
+		"*://ws.audioscrobbler.com/"
+	 ],
+	"version": "0.2.1",
+	"manifest_version": 2
+}
