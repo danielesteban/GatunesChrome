@@ -2,6 +2,15 @@
 	<h1><i class="fa fa-th-large"></i>Radios</h1>
 </header>
 <spinner data-ng-if="loading"></spinner>
+<form data-ng-if="!loading" class="search">
+	<input data-ng-model="autofill.query" data-ng-keydown="autofill.keydown($event)" data-ng-change="autofill.update()" ng-model-options="{updateOn: 'default blur', debounce: {'default': 500, 'blur': 0}}" data-ng-class="{active: autofill.results.length}" type="text" placeholder="Busca un artista..." autocomplete="off" required autofocus>
+	<ul data-ng-if="autofill.results.length" class="results">
+		<li data-ng-class="{selected: autofill.selected === $index}" data-ng-repeat="artist in autofill.results">
+			<a data-ng-mouseover="autofill.selected = $index" data-ng-href="#/artist/{{artist.link}}">{{artist.name}}</a>
+		</li>
+	</ul>
+	<i class="fa fa-search"></i>
+</form>
 <nav data-ng-if="!loading" class="tags">
 	<li data-ng-repeat="tag in tags">
 		<a data-ng-href="#/tag/{{tag.name}}">

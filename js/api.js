@@ -48,31 +48,45 @@ window.API = (function() {
 			this.Request('chart.gettoptags', {
 				limit: 50
 			}, function(data) {
-				var tags = [],
-					process = function() {
-						var tag = data.tags.tag.shift();
-						if(!tag) return callback(JSON.parse(JSON.stringify(self.topTags = tags)));
-						if(tag.name === 'seen live') return process();
-						tag.name = tag.name.substr(0, 1).toUpperCase() + tag.name.substr(1).toLowerCase();
+				self.topTags = [{
+					name: 'Country_Spain'
+				}];
+				data.tags.tag.forEach(function(tag) {
+					if([
+						'seen live'
+					].indexOf(tag.name) !== -1) return;
+
+					tag.name = tag.name.substr(0, 1).toUpperCase() + tag.name.substr(1).toLowerCase();
+					self.topTags.push(tag);
+				});
+				callback(JSON.parse(JSON.stringify(self.topTags)));
+
+				var index = 0,
+					getThumbnails = function() {
+						if(++index >= self.topTags.length) return;
+						var tag = self.topTags[index];
 						self.GetTagTracks(tag.name, function(tracks) {
 							tracks.forEach(function(track) {
 								!tag.image && track.image.length && (tag.image = track.image[track.image.length - 1]['#text']);
 							});
-							tags.push(tag);
-							process();
+							tag.image && Subscriptions.broadcast('tag', {
+								name: tag.name,
+								image: tag.image
+							});
+							getThumbnails();
 						}, 0, 2);
 					};
-				
-				self.GetCountryTracks('Spain', function(tracks) {
-					var tag = {
-							name: 'Country_Spain'
-						};
 
+				self.GetCountryTracks('Spain', function(tracks) {
+					var tag = self.topTags[index];
 					tracks.forEach(function(track) {
 						!tag.image && track.image.length && (tag.image = track.image[track.image.length - 1]['#text']);
 					});
-					tags.push(tag);
-					process();
+					tag.image && Subscriptions.broadcast('tag', {
+						name: tag.name,
+						image: tag.image
+					});
+					getThumbnails();
 				}, 0, 2);
 			});
 		};
@@ -102,6 +116,18 @@ window.API = (function() {
 			});
 		};
 
+		LastFm.prototype.GetArtists = function(query, callback, page, limit) {
+			var params = {
+					artist: query,
+					limit: limit || 50
+				};
+
+			page && (params.page = page);
+			this.Request('artist.search', params, function(data) {
+				callback(data.results && data.results.artistmatches && data.results.artistmatches.artist ? data.results.artistmatches.artist.length ? data.results.artistmatches.artist : [data.results.artistmatches.artist] : []);
+			});
+		};
+
 		LastFm.prototype.GetTrack = function(query, callback) {
 			var params = {
 					track: query,
@@ -110,6 +136,19 @@ window.API = (function() {
 
 			this.Request('track.search', params, function(data) {
 				callback(data.results && data.results.trackmatches &&  data.results.trackmatches.track ? data.results.trackmatches.track.length ? data.results.trackmatches.track[0] : data.results.trackmatches.track : null);
+			});
+		};
+
+		LastFm.prototype.GetArtistTracks = function(artist, callback, page, limit) {
+			var params = {
+					limit: limit || 50
+				};
+
+			if(artist.mbid) params.mbid = artist.mbid;
+			else params.artist = artist.name;
+			page && (params.page = page);
+			this.Request('artist.getTopTracks', params, function(data) {
+				callback(data.toptracks && data.toptracks.track ? data.toptracks.track.length ? data.toptracks.track : [data.toptracks.track] : []);
 			});
 		};
 
@@ -122,7 +161,7 @@ window.API = (function() {
 			if(track.mbid) params.mbid = track.mbid;
 			else {
 				params.artist = track.artist;
-				params.name = track.name;
+				params.track = track.name;
 			}
 			this.Request('track.getSimilar', params, function(data) {
 				callback(data.similartracks && data.similartracks.track ? data.similartracks.track.length ? data.similartracks.track : [data.similartracks.track] : []);
@@ -269,10 +308,21 @@ window.API = (function() {
 
 	var Player = (function() {
 		function Player() {
-			this.tab = null;
 			this.interval = null;
 			this.playlist = null;
-			this.subscriptions = [];
+
+			var self = this;
+			this.tab = null;
+			chrome.tabs.getAllInWindow(undefined, function(tabs) {
+				for(var i=0, tab; tab=tabs[i]; i++) {
+					if(tab.url && tab.url.indexOf('https://www.youtube.com/') === 0) {
+						self.tab = tab;
+						var videoId = Youtube.GetID(tab.url);
+						videoId && self.setPlayingVideo(videoId);
+						break;
+					}
+				}
+			});
 		}
 
 		Player.prototype.load = function(index) {
@@ -298,7 +348,7 @@ window.API = (function() {
 
 		Player.prototype.getPlayingIndex = function() {
 			if(this.playlist === null || this.playing === null) return null;
-			var videoId = this.playing.track.video.id,
+			var videoId = this.playing.video.id,
 				index = null;
 			
 			this.playlist.tracks.forEach(function(t, i) {
@@ -321,29 +371,21 @@ window.API = (function() {
 
 		Player.prototype.setPlayingVideo = function(videoId) {
 			var self = this,
-				cb = function() {
-					var l = self.subscriptions.length;
-					for(var i=0; i<l; i++) {
-						if(self.subscriptions[i].update) self.subscriptions[i].update(self.playing);
-						else {
-							self.subscriptions.splice(i, 1);
-							i--;
-							l--;
-						}
-					}
+				sendEvent = function() {
+					Subscriptions.broadcast('playing', self.playing);
 				};
 
-			if(!videoId) return cb(this.playing = null);
+			if(!videoId) return sendEvent(this.playing = null);
 
 			var track;
 			this.playlist !== null && this.playlist.tracks.forEach(function(t) {
 				!track && t.video.id === videoId && (track = t);
 			});
 
-			if(track) return cb(this.playing = track);
+			if(track) return sendEvent(this.playing = track);
 
 			Youtube.GetVideo(videoId, function(video) {
-				if(!video) return cb(self.playing = null);
+				if(!video) return sendEvent(self.playing = null);
 				LastFm.GetTrack(video.title.$t, function(track) {
 					if(!track) self.playing = null;
 					else {
@@ -361,7 +403,7 @@ window.API = (function() {
 
 						self.playing = track;
 					}
-					cb();
+					sendEvent();
 				});
 			});
 		};
@@ -395,10 +437,54 @@ window.API = (function() {
 		Player.tab = null;
 		clearInterval(Player.interval);
 		Player.interval = null;
+		Player.playing = null;
 		chrome.browserAction.setPopup({string: ''});
 	});
 
 	var Playlists = [];
+
+	var Subscriptions = (function() {
+		function Subscriptions() {
+			this.subscriptions = [];
+			this.subscriptionId = 1;
+		}
+
+		Subscriptions.prototype.add = function(handler) {
+			var subscription = {
+					id: this.subscriptionId++,
+					handler: handler
+				};
+
+			this.subscriptions.push(subscription);
+			return subscription.id;
+		};
+
+		Subscriptions.prototype.remove = function(subscriptionId) {
+			for(var i=0; i<this.subscriptions.length; i++) {
+				if(this.subscriptions[i].id === subscriptionId) {
+					this.subscriptions.splice(i, 1);
+					break;
+				}
+			}
+		};
+
+		Subscriptions.prototype.broadcast = function(event, data) {
+			this.subscriptions.forEach(function(subscription) {
+				subscription.handler(event, data);
+			});
+		};
+
+		Subscriptions.prototype.send = function(subscriptionId, event, data) {
+			for(var i=0; i<this.subscriptions.length; i++) {
+				if(this.subscriptions[i].id === subscriptionId) {
+					this.subscriptions[i].handler(event, data);
+					break;
+				}
+			}
+		};
+
+		return new Subscriptions();
+	}());
 
 	return {
 		GetTopTags: function(params, callback) {
@@ -407,7 +493,13 @@ window.API = (function() {
 		GetPlaylist: function(params, callback) {
 			var playlist;
 			Playlists.forEach(function(p) {
-				if(params.tag) {
+				if(params.artist) {
+					if(params.artist.mbid) {
+						p.artist && p.artist.mbid && p.artist.mbid === params.artist.mbid && (playlist = p);
+					} else  {
+						p.artist && !p.artist.mbid && p.artist.name === params.artist.name && (playlist = p);
+					}
+				} else if(params.tag) {
 					p.tag && p.tag === params.tag && (playlist = p);
 				} else if(params.track) {
 					if(params.track.mbid) {
@@ -421,13 +513,13 @@ window.API = (function() {
 			if(!playlist) {
 				Playlists.push(playlist = JSON.parse(JSON.stringify(params)));
 				playlist.tracks = [];
-				playlist.subscriptions = [];
 
 				var shuffle = function(tracks) {
 						for(var j=0; j<6; j++) tracks.sort(function() {
 							return Math.round(Math.random()) - 0.5;
 						});
 					},
+					subscription = JSON.parse(JSON.stringify(params)),	
 					match = function(tracks) {
 						var track = tracks.shift();
 						if(!track) return;
@@ -435,22 +527,30 @@ window.API = (function() {
 							if(video) {
 								track.video = video;
 								playlist.tracks.push(track);
-
-								var l = playlist.subscriptions.length;
-								for(var i=0; i<l; i++) {
-									if(playlist.subscriptions[i].update) playlist.subscriptions[i].update(JSON.parse(JSON.stringify(track)));
-									else {
-										playlist.subscriptions.splice(i, 1);
-										i--;
-										l--;
-									}
-								}
+								Subscriptions.broadcast('track', {
+									playlist: subscription,
+									track: JSON.parse(JSON.stringify(track))
+								});
 							}
 							match(tracks);
 						});
 					};
 
-				if(playlist.tag) {
+				if(playlist.artist) {
+					LastFm.GetArtistTracks(playlist.artist, function(artistTracks) {
+						if(!artistTracks.length) return;
+						shuffle(artistTracks);
+						var track = {name: artistTracks[0].name};
+						if(artistTracks[0].mbid) track.mbid = artistTracks[0].mbid;
+						else track.artist = artistTracks[0].artist.name;
+						LastFm.GetSimilarTracks(track, function(tracks) {
+							if(!tracks) return;
+							shuffle(tracks);
+							tracks.unshift(artistTracks[0]);
+							match(tracks);
+						});
+					}, 0, 5);
+				} if(playlist.tag) {
 					LastFm.GetTagTracks(playlist.tag, function(tracks) {
 						shuffle(tracks);
 						match(tracks);
@@ -465,16 +565,18 @@ window.API = (function() {
 
 			var response = JSON.parse(JSON.stringify(params));
 			response.tracks = JSON.parse(JSON.stringify(playlist.tracks));
-			response.onUpdate = function(callback) {
-				response.update = callback;
-				playlist.subscriptions.push(response);
-			};
 			callback(response);
 		},
 		PlayVideo: function(params) {
 			var playlist;
 			Playlists.forEach(function(p) {
-				if(params.playlist.tag) {
+				if(params.playlist.artist) {
+					if(params.playlist.artist.mbid) {
+						p.artist && p.artist.mbid && p.artist.mbid === params.playlist.artist.mbid && (playlist = p);
+					} else {
+						p.artist && !p.artist.mbid && p.artist.name === params.playlist.artist.name && (playlist = p);
+					}
+				} else if(params.playlist.tag) {
 					p.tag && p.tag === params.playlist.tag && (playlist = p);
 				} else if(params.playlist.track) {
 					if(params.playlist.track.mbid) {
@@ -494,21 +596,36 @@ window.API = (function() {
 		PrevVideo: function() {
 			Player.prev();
 		},
-		SubscribePlayer: function(params) {
-			Player.subscriptions.push(params);
-			setTimeout(function() {
-				params.update(Player.playing);
-			}, 0);
-		},
 		GetCurrentPlaylistPath: function(params, callback) {
 			if(!Player.playlist) return callback();
-			if(Player.playlist.tag) return callback('tag/' + Player.playlist.tag);
-			else if(Player.playlist.track) {
+			if(Player.playlist.tag) callback('tag/' + Player.playlist.tag);
+			else if(Player.playlist.artist) {
+				var artist = {name: Player.playlist.artist.name};
+				Player.playlist.artist.mbid && (artist.mbid = Player.playlist.artist.mbid);
+				callback('artist/' + encodeURIComponent(JSON.stringify(artist)));
+			} else if(Player.playlist.track) {
 				var track = {name: Player.playlist.track.name};
 				if(Player.playlist.track.mbid) track.mbid = Player.playlist.track.mbid
 				else track.artist = Player.playlist.track.artist.name;
 				callback('track/' + encodeURIComponent(JSON.stringify(track)));
 			}
+		},
+		ShowPlayer: function() {
+			if(!Player.tab) return;
+			chrome.tabs.update(Player.tab.id, {selected: true});
+		},
+		GetArtists: function(params, callback) {
+			LastFm.GetArtists(params.query, callback);
+		},
+		Subscribe: function(params, callback) {
+			var id = Subscriptions.add(params.handler);
+			callback(id);
+			setTimeout(function() {
+				Subscriptions.send(id, 'playing', Player.playing);
+			}, 0);
+		},
+		Unsubscribe: function(params) {
+			Subscriptions.remove(params.id);
 		}
 	};
 }());

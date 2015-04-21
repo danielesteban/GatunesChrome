@@ -140,7 +140,12 @@ function updateIndex() {
 }
 
 function done() {
-	console.log('Done!');
+	console.log('Zipping bundle...');
+	exec('cd ' + bundle + ' && zip -r ../bundle.zip .', function() {
+		fs.remove(bundle, function() {
+			console.log('Done!');
+		});
+	});
 }
 
 createBundle();

@@ -19,7 +19,10 @@
 				<h5>{{track.name}}</h5>
 				<small>{{track.artist.name}}</small>
 			</td>
-			<td>{{track.video.duration | time}}</td>
+			<td>
+				<span>{{track.video.duration | time}}</span>
+				<a data-ng-click="related($event, track)"><i class="fa fa-magnet"></i></a>
+			</td>
 		</tr>		
 	</tbody>
 </table>

@@ -1,14 +1,14 @@
-<div class="mask">
+<div data-ng-click="player()" class="mask">
 	<img data-ng-src="{{playing.image[playing.image.length - 1]['#text']}}">
 	<i></i>
 </div>
 <div class="info">
-	<h4 data-ng-click="current()">{{playing.name}}</h4>
-	<h5 data-ng-click="current()">{{playing.artist.name}}</h5>
 	<div class="actions">
 		<button data-ng-click="related()"><i class="fa fa-fw fa-magnet"></i></button><!--
 		--><button data-ng-click="prev()"><i class="fa fa-fw fa-backward"></i></button><!--
 		--><button data-ng-click="next()"><i class="fa fa-fw fa-forward"></i></button><!--
 		--><button data-ng-click="share()"><i class="fa fa-fw fa-facebook-square"></i></button>
 	</div>
+	<h4 data-ng-click="current()">{{playing.name}}</h4>
+	<h5 data-ng-click="current()">{{playing.artist.name}}</h5>
 </div>

@@ -2,13 +2,48 @@
 
 /* Services */
 angular.module('Gatunes.services', [])
-.factory('api', function($q, $window) {
-	var api = $window.chrome.extension.getBackgroundPage().API;
+.value('events', {})
+.factory('api', function($q, $window, events) {
+	var api = null,
+		subscription = null,
+		onConnect = [],
+		connecting = false,
+		connect = function(callback) {
+			if(api) return callback && callback();
+			callback && onConnect.push(callback);
+			if(connecting) return;
+			connecting = true;
+			chrome.runtime.getBackgroundPage(function(background) {
+				api = background.API;
+				onConnect.forEach(function(cb) {
+					cb();
+				});
+				onConnect.length = 0;
+				connecting = false;
+			});
+		};
+
+	$window.addEventListener('unload', function() {
+		subscription && api.Unsubscribe({id: subscription});
+	});
+
+	connect(function() {
+		api.Subscribe({
+			handler: function(event, data) {
+				events[event] && events[event](data);
+			}
+		}, function(id) {
+			subscription = id;
+		});
+	});
+
 	return function(method, params, callback) {
-		if(!api || !api[method]) return callback();
-		var defer = $q.defer();
-		defer.promise.then(callback);
-		api[method](params, defer.resolve);
+		connect(function() {
+			if(!api || !api[method]) return callback();
+			var defer = $q.defer();
+			defer.promise.then(callback);
+			api[method](params, defer.resolve);
+		});
 	};
 })
 .factory('history', function($window) {
