@@ -10,7 +10,7 @@ window.API = (function() {
 
 		var xhr = new XMLHttpRequest();
 		xhr.onreadystatechange = function() {
-			if(xhr.readyState != 4) return;
+			if(xhr.readyState !== 4 || xhr.status !== 200) return;
 
 			var data = xhr.responseText;
 			if(!raw) {
@@ -462,7 +462,7 @@ window.API = (function() {
 			chrome.tabs.executeScript(tabId, {
 				code: 'var player = document.getElementById("movie_player"); var ended = !player || player.className.indexOf("ended-mode") !== -1; ended'
 			}, function(results) {
-				if(!results[0]) return;
+				if(!results || !results[0]) return;
 				clearInterval(Player.interval);
 				Player.interval = null;
 				Player.next();
@@ -477,7 +477,7 @@ window.API = (function() {
 		clearInterval(Player.interval);
 		Player.interval = null;
 		Player.playing = null;
-		chrome.browserAction.setPopup({string: ''});
+		chrome.browserAction.setPopup({popup: 'index.html'});
 	});
 
 	var Playlists = [];
