@@ -5,11 +5,6 @@ angular.module('Gatunes.controllers', [])
 .controller('tags', function($scope, $location, api, events) {
 	$scope.loading = true;
 	api('GetTopTags', null, function(tags) {
-		var top = tags.shift();
-		tags.sort(function(a, b) {
-			return b.name > a.name ? -1 : (b.name < a.name ? 1 : 0);
-		});
-		tags.unshift(top);
 		$scope.tags = tags;
 		delete $scope.loading;
 

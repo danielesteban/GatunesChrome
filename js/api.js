@@ -1,7 +1,7 @@
 'use strict';
 
 window.API = (function() {
-	var Request = function(url, params, callback) {
+	var Request = function(url, params, callback, raw) {
 		var query;
 		for(var key in params) {
 			query = !query ? '?' : (query + '&');
@@ -12,11 +12,13 @@ window.API = (function() {
 		xhr.onreadystatechange = function() {
 			if(xhr.readyState != 4) return;
 
-			var data;
-			try {
-				data = JSON.parse(xhr.responseText);
-			} catch(e) {
-				return callback();
+			var data = xhr.responseText;
+			if(!raw) {
+				try {
+					data = JSON.parse(data);
+				} catch(e) {
+					return callback();
+				}
 			}
 		
 			callback(data);
@@ -48,9 +50,7 @@ window.API = (function() {
 			this.Request('chart.gettoptags', {
 				limit: 50
 			}, function(data) {
-				self.topTags = [{
-					name: 'Country_Spain'
-				}];
+				self.topTags = [];
 				data.tags.tag.forEach(function(tag) {
 					if([
 						'seen live'
@@ -59,6 +59,13 @@ window.API = (function() {
 					tag.name = tag.name.substr(0, 1).toUpperCase() + tag.name.substr(1).toLowerCase();
 					self.topTags.push(tag);
 				});
+				self.topTags.sort(function(a, b) {
+					return b.name > a.name ? -1 : (b.name < a.name ? 1 : 0);
+				});
+				self.topTags.unshift({
+					name: 'Country_Spain'
+				});
+				
 				callback(JSON.parse(JSON.stringify(self.topTags)));
 
 				var index = 0,
@@ -67,7 +74,7 @@ window.API = (function() {
 						var tag = self.topTags[index];
 						self.GetTagTracks(tag.name, function(tracks) {
 							tracks.forEach(function(track) {
-								!tag.image && track.image.length && (tag.image = track.image[track.image.length - 1]['#text']);
+								!tag.image && track.image && (tag.image = track.image[track.image.length - 1]['#text']);
 							});
 							tag.image && Subscriptions.broadcast('tag', {
 								name: tag.name,
@@ -80,7 +87,7 @@ window.API = (function() {
 				self.GetCountryTracks('Spain', function(tracks) {
 					var tag = self.topTags[index];
 					tracks.forEach(function(track) {
-						!tag.image && track.image.length && (tag.image = track.image[track.image.length - 1]['#text']);
+						!tag.image && track.image && (tag.image = track.image[track.image.length - 1]['#text']);
 					});
 					tag.image && Subscriptions.broadcast('tag', {
 						name: tag.name,
@@ -184,14 +191,48 @@ window.API = (function() {
 
 		Youtube.prototype.Search = function(query, callback, page) {
 			var params = {
-					alt: 'json',
-					format: 5,
-					vq: query,
-					'start-index': ((page || 0) * 50) + 1,
-					'max-results': 50
-				}, url;
+					search_query: query
+				};
 
-			Request('https://gdata.youtube.com/feeds/api/videos', params, callback);
+			page && (params.page = page);
+			Request('https://www.youtube.com/results', params, function(html) {
+				var videos = [];
+				html = html.substr(html.indexOf('class="section-list"'));
+
+				var idString = 'data-context-item-id="',
+					idIndex = html.indexOf(idString);
+
+				while(idIndex !== -1) {
+					html = html.substr(idIndex + idString.length);
+					var video = {
+							id: html.substr(0, html.indexOf('"'))
+						};
+					
+					var durationString = 'aria-hidden="true">',
+						durationIndex = html.indexOf(durationString);
+
+					html = html.substr(durationIndex + durationString.length);
+
+					video.duration = html.substr(0, html.indexOf('</span>')).split(':');
+					video.duration = (parseInt(video.duration[0], 10) * 60) + parseInt(video.duration[1], 10);
+
+					var titleString = 'dir="ltr">',
+						titleIndex = html.indexOf(titleString);
+					
+					html = html.substr(titleIndex + titleString.length);
+
+					video.title = html.substr(0, html.indexOf('</a>'));
+
+					idIndex = html.indexOf('data-context-item-id=');
+
+					var hdIndex = html.indexOf('>HD</span>');
+					if(hdIndex !== -1 && hdIndex < idIndex) video.hd = true;
+
+					videos.push(video);
+				}
+
+				callback(videos);
+			}, true);
 		};
 
 		Youtube.prototype.BestMatch = function(track, callback) {
@@ -235,11 +276,10 @@ window.API = (function() {
 					return bw;
 				}();
 
-			this.Search(name, function(r) {
-				if(!r.feed || !r.feed.entry) return callback();
-				var videos = [];
-				r.feed.entry.forEach(function(video, i) {
-					var videoWords = getWords(video.title.$t.replace(/ - /g, ' ').replace(/ \/ /g, ' ')),
+			this.Search(name, function(videos) {
+				if(!videos.length) return callback();
+				videos.forEach(function(video, i) {
+					var videoWords = getWords(video.title.replace(/ - /g, ' ').replace(/ \/ /g, ' ')),
 						wCount = 0,
 						nameWCount = 0,
 						bwCount = 0;
@@ -254,19 +294,12 @@ window.API = (function() {
 						videoWords.indexOf(w) !== -1 && bwCount++;		
 					});
 
-					video.duration = parseInt(video.media$group.yt$duration ? video.media$group.yt$duration.seconds : 0, 10);
-					videos.push({
-						index: i,
-						id: video.id.$t.substr(video.id.$t.lastIndexOf('/') + 1),
-						title: video.title.$t,
-						duration: video.duration,
-						timeDiff: Math.abs(video.duration - track.duration),
-						wCount: wCount,
-						bwCount: bwCount,
-						exactMatch: wCount === videoWords.length,
-						nameMatch: nameWCount === nameWords.length,
-						hd: video.yt$hd ? true : false
-					});
+					video.index = i;
+					video.timeDiff = Math.abs(video.duration - track.duration);
+					video.wCount = wCount;
+					video.bwCount = bwCount;
+					video.exactMatch = wCount === videoWords.length;
+					video.nameMatch = nameWCount === nameWords.length;
 				});
 				videos.sort(function(a, b) {
 					return b.bwCount > a.bwCount ? -1 : (b.bwCount < a.bwCount ? 1 : 
@@ -297,10 +330,17 @@ window.API = (function() {
 		Youtube.prototype.GetVideo = function(videoId, callback) {
 			if(this.videos[videoId]) return callback(this.videos[videoId]);
 			var self = this;
-			Request('https://gdata.youtube.com/feeds/api/videos/' + videoId, {alt: 'json'}, function(data) {
-				if(!data.entry) return callback();
-				callback(self.videos[videoId] = data.entry);
-			});
+			Request('https://www.youtube.com/watch', {v: videoId}, function(html) {
+				var titleString = '<title>',
+					titleIndex = html.indexOf(titleString);
+
+				html = html.substr(titleIndex + titleString.length);
+				
+				callback(self.videos[videoId] = {
+					id: videoId,
+					title: html.substr(0, html.indexOf(' - YouTube</title>'))
+				});
+			}, true);
 		};
 
 		return new Youtube();
@@ -386,13 +426,12 @@ window.API = (function() {
 
 			Youtube.GetVideo(videoId, function(video) {
 				if(!video) return sendEvent(self.playing = null);
-				LastFm.GetTrack(video.title.$t, function(track) {
+				LastFm.GetTrack(video.title, function(track) {
 					if(!track) self.playing = null;
 					else {
 						track.artist = {name: track.artist};
 						track.video = {
-							id: video.id.$t.substr(video.id.$t.lastIndexOf('/') + 1),
-							duration: parseInt(video.media$group.yt$duration ? video.media$group.yt$duration.seconds : 0, 10)
+							id: video.id
 						};
 
 						if(track.mbid) track.video.mbid = track.mbid;

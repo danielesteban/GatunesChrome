@@ -29,6 +29,6 @@ angular.module('Gatunes', [
 })
 .run(function($window) {
 	$window.document.body.addEventListener('contextmenu', function(e) {
-	    //e.preventDefault();
+	    e.preventDefault();
 	});
 });
